@@ -1,5 +1,3 @@
-import fs from 'fs';
-
 export function get_program(req, res) {
   return req.body?.program;
 }
