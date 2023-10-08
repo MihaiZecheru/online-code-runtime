@@ -95,8 +95,8 @@ app.ws('/io/python', (ws, req) => {
 			const fp = filepath('py');
 			fs.writeFile(fp, program, (err) => {
 				if (err) {
-					console.error(err);
-					res.status(500).send(JSON.stringify({ error: 'Error writing to file.' }));
+					ws.send('WEBSOCKET ERROR: error writing to file');
+					ws.close();
 					remove_file(fp);
 				}
 
