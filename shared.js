@@ -11,7 +11,7 @@ export function filepath(ext) {
 export function handle_writefile_err(err, res, filepath) {
   if (err) {
     console.error(err);
-    res.status(500).send({ error: 'Error writing the file.' });
+    res.status(500).send({ error: 'Error writing to file.' });
     remove_file(filepath);
     return true;
   }
