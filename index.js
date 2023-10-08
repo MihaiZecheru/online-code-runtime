@@ -127,6 +127,30 @@ app.post('/language/c', (req, res) => {
 	})
 });
 
+app.post('/language/cpp', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+
+	const fp = filepath('cpp');
+	fs.writeFile(fp, program, (err) => {
+		if (handle_writefile_err(err, res, fp)) return;
+		
+		let fp_exe = fp.replace('.cpp', '.exe');
+		exec(`gpp ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
+			if (handle_exec_err(err, res, fp, stderr, true)) return;
+			remove_file(fp, ['exe']);
+
+			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+			const _fp_exe = fp_exe.replace('./code/', '');
+			exec(`cd code && ${_fp_exe}`, (err, stdout, stderr) => {
+				if (handle_exec_err(err, res, fp_exe, stderr, false)) return;
+				remove_file(fp_exe);
+				res.status(200).json({ output: stdout, error: stderr });
+			});
+		});
+	})
+});
+
 app.listen(PORT, (err) => {
     if (err) console.error(err);
     else console.log("Server listening on", URL);
