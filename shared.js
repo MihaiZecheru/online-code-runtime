@@ -38,7 +38,7 @@ export function remove_file(filepath, exceptions = []) {
   const fp = '.' + filepath.split('.').slice(0, -1).join('');
 
   // remove all possible extensions
-  for (const ext of ['py', 'js', 'ts', 'c', 'cpp', 'cs', 'lua', 'exe']) {
+  for (const ext of ['py', 'js', 'ts', 'c', 'cpp', 'cs', 'rs', 'lua', 'exe']) {
     if (!fs.existsSync(`${fp}.${ext}`)) continue;
     if (exceptions.includes(ext)) continue;
     fs.unlink(`${fp}.${ext}`, (err) => {
