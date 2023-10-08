@@ -23,7 +23,7 @@ if (!fs.existsSync('./code/')) {
 }
 
 app.get('/', (req, res) => {
-	res.status(200).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
+	res.status(200).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, csharp, rust, or lua`);
 });
 
 // -----------------------------------------------------------------------------------------
@@ -31,7 +31,7 @@ app.get('/', (req, res) => {
 // -----------------------------------------------------------------------------------------
 
 app.get('/execute/', (req, res) => {
-	res.status(400).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
+	res.status(400).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, csharp, rust, or lua`);
 });
 
 app.post('/execute/python', (req, res) => {
@@ -64,7 +64,7 @@ app.post('/execute/cpp', (req, res) => {
 	run_cpp(program, res);
 });
 
-app.post('/execute/cs', (req, res) => {
+app.post('/execute/csharp', (req, res) => {
 	const program = get_program(req);
 	if (!program) return res.status(400).send({ error: 'No program provided.' });
 	run_csharp(program, res);
@@ -202,6 +202,52 @@ app.ws('/io/cpp', (ws, req) => {
 
 				let fp_exe = fp.replace('.cpp', '.exe');
 				exec(`gpp ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
+					if (err) {
+						ws.send(`WEBSOCKET ERROR: error compiling the program${ stderr ? (':\n' + stderr) : '.' }`);
+						return remove_file(fp);
+					} else remove_file(fp, ['exe']);
+
+					// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+					child = spawn(fp_exe, { stdio: 'pipe' });
+					child.stdout.on('data', (data) => { ws.send(JSON.stringify({ output: data.toString() })) });
+					child.stderr.on('data', (data) => { ws.send(JSON.stringify({ error: data.toString() })) });
+					child.on('exit', () => {
+						remove_file(fp);
+						ws.send("PROGRAM END: websocket closed");
+						ws.close();
+					});
+					child.stdin.on('error', (err) => {
+						ws.send('WEBSOCKET ERROR: error processing input');
+						ws.close();
+					});
+				});
+			});
+		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			const input = msg.substring(6);
+			child.stdin.write(input);
+			child.stdin.end();
+		}
+	});
+});
+// TODO: include in documentation that (INPUT) is required in the input prompt when prompting the user for an input for every language.
+app.ws('/io/csharp', (ws, req) => {
+	let child;
+	ws.on('message', (msg) => {
+		if (msg.startsWith('PROGRAM:'))
+		{
+			const program = msg.substring(8);
+			const fp = filepath('cs');
+			fs.writeFile(fp, program, (err) => {
+				if (err) {
+					ws.send('WEBSOCKET ERROR: error writing to file');
+					ws.close();
+					return remove_file(fp);
+				}
+
+				let fp_exe = fp.replace('.cs', '.exe');
+				exec(`csc ${fp} -out:${fp_exe}`, (err, stdout, stderr) => {
 					if (err) {
 						ws.send(`WEBSOCKET ERROR: error compiling the program${ stderr ? (':\n' + stderr) : '.' }`);
 						return remove_file(fp);
