@@ -18,11 +18,11 @@ if (!fs.existsSync('./code/')) {
 }
 
 app.get('/', (req, res) => {
-	res.status(200).send(`To run code, use ${URL}/language/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, or lua`);
+	res.status(200).send(`To run code, use ${URL}/language/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
 });
 
 app.get('/language/', (req, res) => {
-	res.status(400).send(`To run code, use ${URL}/language/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, or lua`);
+	res.status(400).send(`To run code, use ${URL}/language/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
 });
 
 app.post('/language/python', (req, res) => {
@@ -137,6 +137,30 @@ app.post('/language/cpp', (req, res) => {
 		
 		let fp_exe = fp.replace('.cpp', '.exe');
 		exec(`gpp ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
+			if (handle_exec_err(err, res, fp, stderr, true)) return;
+			remove_file(fp, ['exe']);
+
+			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+			const _fp_exe = fp_exe.replace('./code/', '');
+			exec(`cd code && ${_fp_exe}`, (err, stdout, stderr) => {
+				if (handle_exec_err(err, res, fp_exe, stderr, false)) return;
+				remove_file(fp_exe);
+				res.status(200).json({ output: stdout, error: stderr });
+			});
+		});
+	})
+});
+
+app.post('/language/cs', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+
+	const fp = filepath('cs');
+	fs.writeFile(fp, program, (err) => {
+		if (handle_writefile_err(err, res, fp)) return;
+
+		let fp_exe = fp.replace('.cs', '.exe');
+		exec(`csc ${fp} -out:${fp_exe}`, (err, stdout, stderr) => {
 			if (handle_exec_err(err, res, fp, stderr, true)) return;
 			remove_file(fp, ['exe']);
 
