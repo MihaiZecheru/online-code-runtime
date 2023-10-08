@@ -29,7 +29,7 @@ function handle_writefile_err(err, res, fp) {
  * @param {*} stderr stderr object from exec callback
  * @param {*} compile if true, errors will say 'error compiling' instead of 'error executing'
  */
-function handle_exec_err(err, res, filepath, stderr = null, compile = false) {
+export function handle_exec_err(err, res, filepath, stderr = null, compile = false) {
   if (err) {
     res.status(500).send({ error: `Error ${ compile ? 'compiling' : 'executing' } the program${ stderr ? (':\n' + stderr) : '.' }` });
     remove_file(filepath);
