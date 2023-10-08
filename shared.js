@@ -17,10 +17,17 @@ export function handle_writefile_err(err, res, filepath) {
   }
 }
 
-export function handle_exec_err(err, res, filepath, compile = false) {
+/**
+ * 
+ * @param {*} err err object from exec callback
+ * @param {*} res res object from express callback
+ * @param {*} filepath path to the file
+ * @param {*} stderr stderr object from exec callback
+ * @param {*} compile if true, errors will say 'error compiling' instead of 'error executing'
+ */
+export function handle_exec_err(err, res, filepath, stderr = null, compile = false) {
   if (err) {
-    console.log(err)
-    res.status(500).send({ error: `Error ${ compile ? 'compiling' : 'executing' } the program.` });
+    res.status(500).send({ error: `Error ${ compile ? 'compiling' : 'executing' } the program${ stderr ? (':\n' + stderr) : '.' }` });
     remove_file(filepath);
     return true;
   }
