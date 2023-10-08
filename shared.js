@@ -1,3 +1,9 @@
+import fs from 'fs';
+import http from 'http';
+import express from 'express';
+import express_ws from 'express-ws';
+import { exec, spawn } from 'child_process';
+
 export function get_program(req, res) {
   return req.body?.program;
 }
@@ -6,7 +12,7 @@ export function filepath(ext) {
   return `./code/${Date.now()}.${ext}`;
 }
 
-export function handle_writefile_err(err, res, fp) {
+function handle_writefile_err(err, res, fp) {
   if (err) {
     console.error(err);
     res.status(500).send({ error: 'Error writing to file.' });
@@ -23,7 +29,7 @@ export function handle_writefile_err(err, res, fp) {
  * @param {*} stderr stderr object from exec callback
  * @param {*} compile if true, errors will say 'error compiling' instead of 'error executing'
  */
-export function handle_exec_err(err, res, filepath, stderr = null, compile = false) {
+function handle_exec_err(err, res, filepath, stderr = null, compile = false) {
   if (err) {
     res.status(500).send({ error: `Error ${ compile ? 'compiling' : 'executing' } the program${ stderr ? (':\n' + stderr) : '.' }` });
     remove_file(filepath);
