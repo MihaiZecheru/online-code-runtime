@@ -175,6 +175,45 @@ app.post('/language/cs', (req, res) => {
 	})
 });
 
+app.post('/language/rust', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+
+	const fp = filepath('rs');
+	fs.writeFile(fp, program, (err) => {
+		if (handle_writefile_err(err, res, fp)) return;
+
+		exec(`cd code && rustc ${fp.replace('./code/', '')}`, (err, stdout, stderr) => {
+			if (handle_exec_err(err, res, fp, stderr, true)) return;
+			remove_file(fp, ['exe']);
+
+			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+			const fp_exe = fp.replace('./code/', '').replace('.rs', '.exe');
+			exec(`cd code && ${fp_exe}`, (err, stdout, stderr) => {
+				if (handle_exec_err(err, res, './code/' + fp_exe, stderr, false)) return;
+				remove_file('./code/' + fp_exe);
+				res.status(200).json({ output: stdout, error: stderr });
+			});
+		});
+	})
+});
+
+app.post('/language/lua', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+
+	const fp = filepath('lua');
+	fs.writeFile(fp, program, (err) => {
+		if (handle_writefile_err(err, res, fp)) return;
+
+		exec(`lua ${fp}`, (err, stdout, stderr) => {
+			if (handle_exec_err(err, res, fp, stderr, false)) return;
+			remove_file(fp);
+			res.status(200).json({ output: stdout, error: stderr });
+		});
+	})
+});
+
 app.listen(PORT, (err) => {
     if (err) console.error(err);
     else console.log("Server listening on", URL);
