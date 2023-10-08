@@ -2,7 +2,7 @@ import fs from 'fs';
 import http from 'http';
 import express from 'express';
 import express_ws from 'express-ws';
-import { spawn } from 'child_process';
+import { exec, spawn } from 'child_process';
 import {
 	get_program, filepath, remove_file,
 	run_python, run_javascript, run_typescript, run_c, run_cpp, run_csharp, run_rust, run_lua
@@ -97,7 +97,7 @@ app.ws('/io/python', (ws, req) => {
 				if (err) {
 					ws.send('WEBSOCKET ERROR: error writing to file');
 					ws.close();
-					remove_file(fp);
+					return remove_file(fp);
 				}
 
 				child = spawn('python', [fp], { stdio: 'pipe' });
@@ -123,7 +123,59 @@ app.ws('/io/python', (ws, req) => {
 	});
 });
 
+app.ws('/io/javascript', (ws, req) => {
+	ws.send('WEBSOCKET ERROR: javascript is not supported for websockets as there is no way to get input without an external module');
+});
 
+app.ws('/io/typescript', (ws, req) => {
+	ws.send('WEBSOCKET ERROR: javascript is not supported for websockets as there is no way to get input without an external module');
+});
+
+app.ws('/io/cpp', (ws, req) => {
+	let child;
+	ws.on('message', (msg) => {
+		if (msg.startsWith('PROGRAM:'))
+		{
+			const program = msg.substring(8);
+			const fp = filepath('cpp');
+			fs.writeFile(fp, program, (err) => {
+				if (err) {
+					ws.send('WEBSOCKET ERROR: error writing to file');
+					ws.close();
+					return remove_file(fp);
+				}
+
+				let fp_exe = fp.replace('.c', '.exe');
+				exec(`gpp ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
+					if (err) {
+						ws.send(`WEBSOCKET ERROR: error compiling the program${ stderr ? (':\n' + stderr) : '.' }`);
+						return remove_file(fp);
+					} else remove_file(fp, ['exe']);
+
+					// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+					child = spawn(fp_exe, { stdio: 'pipe' });
+					child.stdout.on('data', (data) => { ws.send(JSON.stringify({ output: data.toString() })) });
+					child.stderr.on('data', (data) => { ws.send(JSON.stringify({ error: data.toString() })) });
+					child.on('exit', () => {
+						remove_file(fp);
+						ws.send("PROGRAM END: websocket closed");
+						ws.close();
+					});
+					child.stdin.on('error', (err) => {
+						ws.send('WEBSOCKET ERROR: error processing input');
+						ws.close();
+					});
+				});
+			});
+		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			const input = msg.substring(6);
+			child.stdin.write(input);
+			child.stdin.end();
+		}
+	});
+});
 
 // -----------------------------------------------------------------------------------------
 // start server
