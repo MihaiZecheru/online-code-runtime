@@ -138,6 +138,8 @@ app.ws('/io/c', (ws, req) => {
 		if (msg.startsWith('PROGRAM:'))
 		{
 			let program = msg.substring(8);
+
+			// c requires setbuf(stdout, NULL); to be called in main for the io to work
 			const m = program.match(/int main\s*\((.*?)\)\s*{/);
 			if (m) {
 				const index = m.index;
@@ -312,6 +314,47 @@ app.ws('/io/rust', (ws, req) => {
 						ws.send('WEBSOCKET ERROR: error processing input');
 						ws.close();
 					});
+				});
+			});
+		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			const input = msg.substring(6);
+			child.stdin.write(input);
+			child.stdin.end();
+		}
+	});
+});
+
+// TODO: include in documentation that Lua has the same feature as c where the stdout needs to be flushed. io.stdout:setvbuf("no") needs to be added to the top of the file
+app.ws('/io/lua', (ws, req) => {
+	let child;
+	ws.on('message', (msg) => {
+		if (msg.startsWith('PROGRAM:'))
+		{
+			let program = msg.substring(8);
+			// Lua has the same feature as c where the stdout needs to be flushed. io.stdout:setvbuf("no") needs to be added to the top of the file
+			program = 'io.stdout:setvbuf("no")\n' + program;
+			const fp = filepath('lua');
+			fs.writeFile(fp, program, (err) => {
+				if (err) {
+					ws.send('WEBSOCKET ERROR: error writing to file');
+					ws.close();
+					return remove_file(fp);
+				}
+
+				// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+				child = spawn('lua', [fp], { stdio: 'pipe' });
+				child.stdout.on('data', (data) => { ws.send(JSON.stringify({ output: data.toString() })) });
+				child.stderr.on('data', (data) => { ws.send(JSON.stringify({ error: data.toString() })) });
+				child.on('exit', () => {
+					remove_file(fp);
+					ws.send("PROGRAM END: websocket closed");
+					ws.close();
+				});
+				child.stdin.on('error', (err) => {
+					ws.send('WEBSOCKET ERROR: error processing input');
+					ws.close();
 				});
 			});
 		}
