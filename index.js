@@ -1,11 +1,13 @@
 import fs from 'fs';
 import http from 'http';
 import express from 'express';
-import { get_program, filepath, handle_writefile_err, handle_exec_err, remove_file } from './shared.js';
+import express_ws from 'express-ws';
+import { get_program, filepath, handle_writefile_err, handle_exec_err, remove_file, run_c, run_cpp, run_typescript, run_javascript, run_python } from './shared.js';
 import { exec, spawn } from 'child_process';
 
 const app = express();
 app.use(express.json());
+express_ws(app);
 
 const server = http.createServer(app);
 server.timeout = 60000; // 60s
@@ -18,201 +20,99 @@ if (!fs.existsSync('./code/')) {
 }
 
 app.get('/', (req, res) => {
-	res.status(200).send(`To run code, use ${URL}/language/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
+	res.status(200).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
 });
 
-app.get('/language/', (req, res) => {
-	res.status(400).send(`To run code, use ${URL}/language/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
+// -----------------------------------------------------------------------------------------
+// websockets for accepting inputs
+// -----------------------------------------------------------------------------------------
+
+app.get('/execute/', (req, res) => {
+	res.status(400).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, cs, rust, or lua`);
 });
 
-app.post('/language/python', (req, res) => {
+app.post('/execute/python', (req, res) => {
 	const program = get_program(req);
 	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_python(program, res);
+});
 
-	const fp = filepath('py');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
+app.post('/execute/javascript', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_javascript(program, res);
+});
 
-		exec(`python ${fp}`, (err, stdout, stderr) => {
-			if (handle_exec_err(err, res, fp, stderr, false)) return;
-			remove_file(fp);
-			res.status(200).json({ output: stdout, error: stderr });
-		});
+app.post('/execute/typescript', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_typescript(program, res);
+});
+
+app.post('/execute/c', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_c(program, res);
+});
+
+app.post('/execute/cpp', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_cpp(program, res);
+});
+
+app.post('/execute/cs', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_csharp(program, res);
+});
+
+app.post('/execute/rust', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_rust(program, res);
+});
+
+app.post('/execute/lua', (req, res) => {
+	const program = get_program(req);
+	if (!program) return res.status(400).send({ error: 'No program provided.' });
+	run_lua(program, res);
+});
+
+// -----------------------------------------------------------------------------------------
+// websockets for accepting inputs
+// -----------------------------------------------------------------------------------------
+
+app.ws('/io/python', (ws, req) => {
+	let program = null;
+
+	ws.on('message', (msg) => {
+		if (msg.startsWith('PROGRAM:'))
+		{
+			program = msg.substring(8);
+			run_python(program);
+		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			if (!program) return ws.send(JSON.stringify({ error: 'No program provided.' }));
+
+			const fp = filepath('py');
+			fs.writeFile(fp, program, (err) => {
+				if (handle_writefile_err(err, ws, fp)) return;
+
+				exec(`python ${fp}`, (err, stdout, stderr) => {
+					if (handle_exec_err(err, ws, fp, stderr, false)) return;
+					remove_file(fp);
+					ws.send(JSON.stringify({ output: stdout, error: stderr }));
+				});
+			});
+		}
 	});
 });
 
-app.post('/language/javascript', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('js');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-
-		// spawn() has to be used instead of exec because if node is used, the express server will be turned off if it is also being run with node, because the exec takes priority over the application
-		const child = spawn('node', [fp])
-
-		let _stdout = '';
-		let _stderr = '';
-		child.stdout.on('data', (data) => { _stdout += data });
-		child.stderr.on('data', (data) => { _stderr += data });
-		child.on('error', (err) => {
-			if (err) {
-				res.status(500).send({ error: `Error executing the program${ _stderr ? (':\n' + _stderr) : '.' }` });
-				remove_file(fp);
-			}
-		});
-		child.on('close', (code) => {
-			remove_file(fp);
-			res.status(200).json({ output: _stdout, error: _stderr });
-		});
-	});
-});
-
-app.post('/language/typescript', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('ts');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-
-		exec(`tsc ${fp}`, (err, stdout, stderr) => {
-			const fp_js = fp.replace('.ts', '.js');
-			if (handle_exec_err(err, res, fp, null, true)) return;
-			remove_file(fp, ['js']);
-			
-			// spawn() has to be used instead of exec because if node is used, the express server will be turned off if it is also being run with node, because the exec takes priority over the application
-			const child = spawn('node', [fp_js])
-
-			let _stdout = '';
-			let _stderr = '';
-			child.stdout.on('data', (data) => { _stdout += data });
-			child.stderr.on('data', (data) => { _stderr += data });
-			child.on('error', (err) => {
-				if (err) {
-					res.status(500).send({ error: `Error executing the program${ _stderr ? ':\n' + _stderr : '.' }` });
-					remove_file(fp_js);
-				}
-			});
-			child.on('close', (code) => {
-				remove_file(fp_js);
-				res.status(200).json({ output: _stdout, error: _stderr });
-			});
-		});
-	});
-});
-
-app.post('/language/c', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('c');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-		
-		let fp_exe = fp.replace('.c', '.exe');
-		exec(`gcc ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
-			if (handle_exec_err(err, res, fp, stderr, true)) return;
-			remove_file(fp, ['exe']);
-
-			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
-			const _fp_exe = fp_exe.replace('./code/', '');
-			exec(`cd code && ${_fp_exe}`, (err, stdout, stderr) => {
-				if (handle_exec_err(err, res, fp_exe, stderr, false)) return;
-				remove_file(fp_exe);
-				res.status(200).json({ output: stdout, error: stderr });
-			});
-		});
-	})
-});
-
-app.post('/language/cpp', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('cpp');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-		
-		let fp_exe = fp.replace('.cpp', '.exe');
-		exec(`gpp ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
-			if (handle_exec_err(err, res, fp, stderr, true)) return;
-			remove_file(fp, ['exe']);
-
-			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
-			const _fp_exe = fp_exe.replace('./code/', '');
-			exec(`cd code && ${_fp_exe}`, (err, stdout, stderr) => {
-				if (handle_exec_err(err, res, fp_exe, stderr, false)) return;
-				remove_file(fp_exe);
-				res.status(200).json({ output: stdout, error: stderr });
-			});
-		});
-	})
-});
-
-app.post('/language/cs', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('cs');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-
-		let fp_exe = fp.replace('.cs', '.exe');
-		exec(`csc ${fp} -out:${fp_exe}`, (err, stdout, stderr) => {
-			if (handle_exec_err(err, res, fp, stderr, true)) return;
-			remove_file(fp, ['exe']);
-
-			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
-			const _fp_exe = fp_exe.replace('./code/', '');
-			exec(`cd code && ${_fp_exe}`, (err, stdout, stderr) => {
-				if (handle_exec_err(err, res, fp_exe, stderr, false)) return;
-				remove_file(fp_exe);
-				res.status(200).json({ output: stdout, error: stderr });
-			});
-		});
-	})
-});
-
-app.post('/language/rust', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('rs');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-
-		exec(`cd code && rustc ${fp.replace('./code/', '')}`, (err, stdout, stderr) => {
-			if (handle_exec_err(err, res, fp, stderr, true)) return;
-			remove_file(fp, ['exe']);
-
-			// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
-			const fp_exe = fp.replace('./code/', '').replace('.rs', '.exe');
-			exec(`cd code && ${fp_exe}`, (err, stdout, stderr) => {
-				if (handle_exec_err(err, res, './code/' + fp_exe, stderr, false)) return;
-				remove_file('./code/' + fp_exe);
-				res.status(200).json({ output: stdout, error: stderr });
-			});
-		});
-	})
-});
-
-app.post('/language/lua', (req, res) => {
-	const program = get_program(req);
-	if (!program) return res.status(400).send({ error: 'No program provided.' });
-
-	const fp = filepath('lua');
-	fs.writeFile(fp, program, (err) => {
-		if (handle_writefile_err(err, res, fp)) return;
-
-		exec(`lua ${fp}`, (err, stdout, stderr) => {
-			if (handle_exec_err(err, res, fp, stderr, false)) return;
-			remove_file(fp);
-			res.status(200).json({ output: stdout, error: stderr });
-		});
-	})
-});
+// -----------------------------------------------------------------------------------------
+// start server
+//-----------------------------------------------------------------------------------------
 
 app.listen(PORT, (err) => {
     if (err) console.error(err);
