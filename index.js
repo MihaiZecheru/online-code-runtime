@@ -2,8 +2,11 @@ import fs from 'fs';
 import http from 'http';
 import express from 'express';
 import express_ws from 'express-ws';
-import { get_program, filepath, handle_writefile_err, handle_exec_err, remove_file, run_c, run_cpp, run_typescript, run_javascript, run_python } from './shared.js';
-import { exec, spawn } from 'child_process';
+import { spawn } from 'child_process';
+import {
+	get_program, filepath, remove_file,
+	run_python, run_javascript, run_typescript, run_c, run_cpp, run_csharp, run_rust, run_lua
+} from './shared.js';
 
 const app = express();
 app.use(express.json());
@@ -24,7 +27,7 @@ app.get('/', (req, res) => {
 });
 
 // -----------------------------------------------------------------------------------------
-// websockets for accepting inputs
+// execute the program, return output and error, no inputs
 // -----------------------------------------------------------------------------------------
 
 app.get('/execute/', (req, res) => {
@@ -80,35 +83,47 @@ app.post('/execute/lua', (req, res) => {
 });
 
 // -----------------------------------------------------------------------------------------
-// websockets for accepting inputs
+// websockets for accepting inputs throughout the program's execution
 // -----------------------------------------------------------------------------------------
 
 app.ws('/io/python', (ws, req) => {
-	let program = null;
-
+	let child;
 	ws.on('message', (msg) => {
 		if (msg.startsWith('PROGRAM:'))
 		{
-			program = msg.substring(8);
-			run_python(program);
-		}
-		else if (msg.startsWith('INPUT:'))
-		{
-			if (!program) return ws.send(JSON.stringify({ error: 'No program provided.' }));
-
+			const program = msg.substring(8);
 			const fp = filepath('py');
 			fs.writeFile(fp, program, (err) => {
-				if (handle_writefile_err(err, ws, fp)) return;
-
-				exec(`python ${fp}`, (err, stdout, stderr) => {
-					if (handle_exec_err(err, ws, fp, stderr, false)) return;
+				if (err) {
+					console.error(err);
+					res.status(500).send(JSON.stringify({ error: 'Error writing to file.' }));
 					remove_file(fp);
-					ws.send(JSON.stringify({ output: stdout, error: stderr }));
+				}
+
+				child = spawn('python', [fp], { stdio: 'pipe' });
+				child.stdout.on('data', (data) => { ws.send(JSON.stringify({ output: data.toString() })) });
+				child.stderr.on('data', (data) => { ws.send(JSON.stringify({ error: data.toString() })) });
+				child.on('exit', () => {
+					remove_file(fp);
+					ws.send("PROGRAM END: websocket closed");
+					ws.close();
+				});
+				child.stdin.on('error', (err) => {
+					ws.send('WEBSOCKET ERROR: error processing input');
+					ws.close();
 				});
 			});
 		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			const input = msg.substring(6);
+			child.stdin.write(input);
+			child.stdin.end();
+		}
 	});
 });
+
+
 
 // -----------------------------------------------------------------------------------------
 // start server
