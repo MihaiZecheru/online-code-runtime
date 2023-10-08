@@ -6,11 +6,11 @@ export function filepath(ext) {
   return `./code/${Date.now()}.${ext}`;
 }
 
-export function handle_writefile_err(err, res, filepath) {
+export function handle_writefile_err(err, res, fp) {
   if (err) {
     console.error(err);
     res.status(500).send({ error: 'Error writing to file.' });
-    remove_file(filepath);
+    remove_file(fp);
     return true;
   }
 }
