@@ -131,6 +131,61 @@ app.ws('/io/typescript', (ws, req) => {
 	ws.send('WEBSOCKET ERROR: javascript is not supported for websockets as there is no way to get input without an external module');
 });
 
+// TODO: include in documentation that c requires setbuf(stdout, NULL); to be called in main for the io to work
+app.ws('/io/c', (ws, req) => {
+	let child;
+	ws.on('message', (msg) => {
+		if (msg.startsWith('PROGRAM:'))
+		{
+			let program = msg.substring(8);
+			const m = program.match(/int main\s*\((.*?)\)\s*{/);
+			if (m) {
+				const index = m.index;
+				const len = m[0].length;
+
+				// insert setbuf(stdout, NULL); after the opening brace of main
+				program = program.substring(0, index + len) + '\n\tsetbuf(stdout, NULL);' + program.substring(index + len);
+			}
+			const fp = filepath('c');
+			fs.writeFile(fp, program, (err) => {
+				if (err) {
+					ws.send('WEBSOCKET ERROR: error writing to file');
+					ws.close();
+					return remove_file(fp);
+				}
+
+				let fp_exe = fp.replace('.c', '.exe');
+				exec(`gcc ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
+					if (err) {
+						ws.send(`WEBSOCKET ERROR: error compiling the program${ stderr ? (':\n' + stderr) : '.' }`);
+						return remove_file(fp);
+					} else remove_file(fp, ['exe']);
+
+					// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+					child = spawn(fp_exe, { stdio: 'pipe' });
+					child.stdout.on('data', (data) => { ws.send(JSON.stringify({ output: data.toString() })) });
+					child.stderr.on('data', (data) => { ws.send(JSON.stringify({ error: data.toString() })) });
+					child.on('exit', () => {
+						remove_file(fp);
+						ws.send("PROGRAM END: websocket closed");
+						ws.close();
+					});
+					child.stdin.on('error', (err) => {
+						ws.send('WEBSOCKET ERROR: error processing input');
+						ws.close();
+					});
+				});
+			});
+		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			const input = msg.substring(6);
+			child.stdin.write(input);
+			child.stdin.end();
+		}
+	});
+});
+
 app.ws('/io/cpp', (ws, req) => {
 	let child;
 	ws.on('message', (msg) => {
@@ -145,7 +200,7 @@ app.ws('/io/cpp', (ws, req) => {
 					return remove_file(fp);
 				}
 
-				let fp_exe = fp.replace('.c', '.exe');
+				let fp_exe = fp.replace('.cpp', '.exe');
 				exec(`gpp ${fp} -o ${fp_exe}`, (err, stdout, stderr) => {
 					if (err) {
 						ws.send(`WEBSOCKET ERROR: error compiling the program${ stderr ? (':\n' + stderr) : '.' }`);
