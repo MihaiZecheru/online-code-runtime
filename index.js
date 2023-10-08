@@ -278,6 +278,52 @@ app.ws('/io/csharp', (ws, req) => {
 	});
 });
 
+app.ws('/io/rust', (ws, req) => {
+	let child;
+	ws.on('message', (msg) => {
+		if (msg.startsWith('PROGRAM:'))
+		{
+			const program = msg.substring(8);
+			const fp = filepath('rs');
+			fs.writeFile(fp, program, (err) => {
+				if (err) {
+					ws.send('WEBSOCKET ERROR: error writing to file');
+					ws.close();
+					return remove_file(fp);
+				}
+
+				let fp_exe = fp.replace('.rs', '.exe');
+				exec(`cd code && rustc ${fp.replace('./code/', '')}`, (err, stdout, stderr) => {
+					if (err) {
+						ws.send(`WEBSOCKET ERROR: error compiling the program${ stderr ? (':\n' + stderr) : '.' }`);
+						return remove_file(fp);
+					} else remove_file(fp, ['exe']);
+
+					// remove './code/' prefix from fp_exe because exec was throwing an error, saying './code/' is not a recognizable command
+					child = spawn(fp_exe, { stdio: 'pipe' });
+					child.stdout.on('data', (data) => { ws.send(JSON.stringify({ output: data.toString() })) });
+					child.stderr.on('data', (data) => { ws.send(JSON.stringify({ error: data.toString() })) });
+					child.on('exit', () => {
+						remove_file(fp);
+						ws.send("PROGRAM END: websocket closed");
+						ws.close();
+					});
+					child.stdin.on('error', (err) => {
+						ws.send('WEBSOCKET ERROR: error processing input');
+						ws.close();
+					});
+				});
+			});
+		}
+		else if (msg.startsWith('INPUT:'))
+		{
+			const input = msg.substring(6);
+			child.stdin.write(input);
+			child.stdin.end();
+		}
+	});
+});
+
 // -----------------------------------------------------------------------------------------
 // start server
 //-----------------------------------------------------------------------------------------
