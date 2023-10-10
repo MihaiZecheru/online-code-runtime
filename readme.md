@@ -5,7 +5,7 @@ Run code on another computer and receive the output
 
 ---
 
-To run code and receive an output, send post to https://bv.mzecheru.com/execute/<language>/, and to run code with inputs and outputs, connect a websocket to https://bv.mzecheru.com/io/<language>/, where <language> is python, javascript, typescript, c, cpp, csharp, rust, or lua.
+To run code and receive an output, send post to https://bv.mzecheru.com/execute/&lt;language&gt;/, and to run code with inputs and outputs, connect a websocket to https://bv.mzecheru.com/io/&lt;language&gt;/, where &lt;language&gt; is python, javascript, typescript, c, cpp, csharp, rust, or lua.
 
 To run code using /execute/, send { "program": "" } in the body.
 
