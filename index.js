@@ -16,14 +16,20 @@ const server = http.createServer(app);
 server.timeout = 60000; // 60s
 
 const PORT = 3001;
-const URL = "http://127.0.0.1:" + PORT;
+const URL = "https://bv.mzecheru.com";
 
 if (!fs.existsSync('./code/')) {
 	fs.mkdirSync('./code/');
 }
 
+const help_message = `To run code and receive an output, send post to <b>${URL}/execute/&lt;language&gt;/</b>, and to run code with inputs and outputs, connect a websocket to <b>${URL}/io/&lt;language&gt;/</b>, where &lt;language&gt; is python, javascript, typescript, c, cpp, csharp, rust, or lua.<br/><br/>To run code using /execute/, send { "program": "<your code>" } in the body.<br/><br/>To run code using /io/, form a websocket connection with a /io/ url and send your program using the following format: "PROGRAM:your code can go here, just make sure to start with the word 'program' in all caps followed by a colon."<br/><br/>The websocket server will capture and send all outputs from your program, and those messages will be a stringified JSON object that looks like this: { "output": "this is output captured by the program", "error": "errors will be written here if they occurred" }.<br/><br/>The websocket knows to listen for an input if it sees "(INPUT)" anywhere in the program's output. Modify your code's input() and cout statements to contain "(INPUT)" Send expected inputs over the websocket server by starting the message with "INPUT:this is the stuff you want to send to your program when it requires an input".`;
+
 app.get('/', (req, res) => {
-	res.status(200).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, csharp, rust, or lua`);
+	res.status(400).send(help_message);
+});
+
+app.get('/help/', (req, res) => {
+	res.status(400).send(help_message);
 });
 
 // -----------------------------------------------------------------------------------------
@@ -31,7 +37,7 @@ app.get('/', (req, res) => {
 // -----------------------------------------------------------------------------------------
 
 app.get('/execute/', (req, res) => {
-	res.status(400).send(`To run code, use ${URL}/execute/&lt;language&gt;/ where &lt;language&gt; is python, javascript, typescript, c, cpp, csharp, rust, or lua`);
+	res.status(400).send(help_message);
 });
 
 app.post('/execute/python', (req, res) => {
